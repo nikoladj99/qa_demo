@@ -41,6 +41,10 @@ def t5_model_func(question,context):
 
 def roberta_model_func(question,context):
 
+    if len(context.split()) > 512: 
+        st.write("Too large file")
+        return
+
     # koristimo pretrenirani model, jos uvek nije fine-tunovan
     model_name = "deepset/roberta-base-squad2"
     model = TFAutoModelForQuestionAnswering.from_pretrained(model_name)
