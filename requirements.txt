@@ -1,4 +1,4 @@
 transformers
 tensorflow
 PyPDF2
-numpy==1.23.3
+numpy==1.23.0
