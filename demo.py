@@ -14,13 +14,11 @@ def read_pdf(file):
         text += page.extract_text()
     return text
 
-tf.random.set_seed(42)
-os.environ['PYTHONHASHSEED'] = str(42)
-
 def t5_model_func(question,context):
 
     # koristimo pretrenirani model, jos uvek nije fine-tunovan
-    model_name = "google/flan-t5-base"
+    #model_name = "google/flan-t5-base"
+    model_name =  "google/flan-t5-small" 
     model = TFT5ForConditionalGeneration.from_pretrained(model_name)
     #model = TFAutoModelForSeq2SeqLM.from_pretrained(model_name)
 
