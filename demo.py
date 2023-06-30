@@ -2,6 +2,7 @@ from transformers import TFAutoModelForQuestionAnswering, AutoTokenizer, TFAutoM
 import tensorflow as tf
 import streamlit as st
 import PyPDF2 as pypdf
+import os
 
 @st.cache_data
 def read_pdf(file):
@@ -14,6 +15,7 @@ def read_pdf(file):
     return text
 
 tf.random.set_seed(42)
+os.environ['PYTHONHASHSEED'] = str(42)
 
 def t5_model_func(question,context):
 
