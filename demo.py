@@ -16,6 +16,10 @@ def read_pdf(file):
 
 def t5_model_func(question,context):
 
+    if len(context.split()) > 512: 
+        st.write("Too large file")
+        return
+
     # koristimo pretrenirani model, jos uvek nije fine-tunovan
     #model_name = "google/flan-t5-base"
     model_name =  "google/flan-t5-small" 
