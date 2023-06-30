@@ -14,7 +14,6 @@ def read_pdf(file):
     return text
 
 tf.random.set_seed(42)
-os.environ['PYTHONHASHSEED'] = str(42)
 
 def t5_model_func(question,context):
 
