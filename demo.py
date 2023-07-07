@@ -1,8 +1,10 @@
-from transformers import TFAutoModelForQuestionAnswering, AutoTokenizer, TFAutoModelForSeq2SeqLM,  T5Tokenizer,TFT5ForConditionalGeneration
+from transformers import TFAutoModelForQuestionAnswering, AutoTokenizer, TFAutoModelForSeq2SeqLM,  T5Tokenizer,TFT5ForConditionalGeneration, DistilBertTokenizer, TFDistilBertForQuestionAnswering
 import tensorflow as tf
 import streamlit as st
 import PyPDF2 as pypdf
-import os
+from sklearn.feature_extraction.text import TfidfVectorizer
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 @st.cache_data
 def read_pdf(file):
@@ -14,62 +16,109 @@ def read_pdf(file):
         text += page.extract_text()
     return text
 
-def t5_model_func(question,context):
+def calculate_similarity(question, answer):
+    vectorizer = TfidfVectorizer()
+    pair = [question, answer]
+    tfidf_matrix = vectorizer.fit_transform(pair)
 
-    if len(context.split()) > 512: 
-        st.write("Too large file")
-        return
+    similarity_matrix = cosine_similarity(tfidf_matrix[0], tfidf_matrix[1])
+    similarity = similarity_matrix[0][0]
 
-    # koristimo pretrenirani model, jos uvek nije fine-tunovan
-    #model_name = "google/flan-t5-base"
-    model_name =  "google/flan-t5-small" 
-    model = TFT5ForConditionalGeneration.from_pretrained(model_name)
-    #model = TFAutoModelForSeq2SeqLM.from_pretrained(model_name)
+    return similarity
 
-    # ucitavanje tokenizatora
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+def roberta_model_generate_answer(question, segment, model, tokenizer):
+    # Tokenizacija ulaza
+    inputs = tokenizer(question, segment, return_tensors="tf")
 
-    # tokenizacija ulaza 
-    input_text = question + " " + context
-    #inputs = tokenizer(input_text,return_tensors="tf")
-
-    input_ids = tokenizer.encode(input_text, return_tensors='tf')
-    outputs = model.generate(input_ids)
-    answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-    st.write(answer)
-
-def roberta_model_func(question,context):
-
-    if len(context.split()) > 512: 
-        st.write("Too large file")
-        return
-
-    # koristimo pretrenirani model, jos uvek nije fine-tunovan
-    model_name = "deepset/roberta-base-squad2"
-    model = TFAutoModelForQuestionAnswering.from_pretrained(model_name)
-    #model = TFAutoModelForSeq2SeqLM.from_pretrained(model_name)
-
-    # ucitavanje tokenizatora
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    # tokenizacija ulaza 
-    inputs = tokenizer(question, context, return_tensors="tf")
-
-    # predikcije
+    # Predikcije
     outputs = model(inputs)
 
-    # odredjivanje pozicije pocetka i kraja odgovora
+    # Određivanje pozicije početka i kraja odgovora
     start_logits = outputs.start_logits.numpy()[0]
     end_logits = outputs.end_logits.numpy()[0]
     start_index = int(tf.argmax(start_logits))
     end_index = int(tf.argmax(end_logits))
 
-    # odgovor se vraca iz prosledjenog konteksta 
+    # Odgovor se dobija iz prosleđenog segmenta
     answer = tokenizer.convert_tokens_to_string(
-    tokenizer.convert_ids_to_tokens(inputs["input_ids"][0][start_index : end_index + 1])
+        tokenizer.convert_ids_to_tokens(inputs["input_ids"][0][start_index: end_index + 1])
     )
-    st.write(answer)
+
+    return answer
+
+def t5_model_generate_answer(question, segment, model, tokenizer):
+    # Tokenizacija ulaza
+    input_text = question + " " + segment
+    input_ids = tokenizer.encode(input_text, return_tensors='tf')
+
+    # Generisanje odgovora
+    outputs = model.generate(input_ids)
+    answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    return answer
+
+def roberta_model_func(question, context):
+    # Koristimo pretrenirani model, još uvek nije fine-tjunovan
+    model_name = "deepset/roberta-base-squad2"
+    model = TFAutoModelForQuestionAnswering.from_pretrained(model_name)
+
+    # Učitavanje tokenizatora
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    # Podela konteksta na delove sa stride-om od 256 tokena
+    max_length = 512  # Maksimalna dužina konteksta
+    stride = 256  # Stride za podelu konteksta
+    context_parts = [context[i:i + max_length] for i in range(0, len(context), stride)]
+
+    # Inicijalizacija promenljive za najbolji odgovor
+    best_answer = None
+
+    # Inicijalizacija promenljive za najbolju sličnost
+    best_similarity = 0
+    best_segment = context_parts[0]
+
+    # Iteriranje kroz svaki deo konteksta
+    for segment in context_parts:
+        # Računanje sličnosti između pitanja i segmenta
+        similarity = calculate_similarity(question, segment)
+
+        # Ažuriranje najboljeg odgovora i sličnosti
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_segment = segment
+    
+    best_answer = roberta_model_generate_answer(question, best_segment, model, tokenizer)
+
+    st.write(best_answer)
+
+def t5_model_func(question, context):
+    # Koristimo pretrenirani model, još uvek nije fine-tjunovan
+    model_name = "google/flan-t5-small"
+    model = TFT5ForConditionalGeneration.from_pretrained(model_name)
+
+    # Učitavanje tokenizatora
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    # Podela konteksta na delove sa stride-om od 256 tokena
+    max_length = 512  # Maksimalna dužina konteksta
+    stride = 256  # Stride za podelu konteksta
+    context_parts = [context[i:i + max_length] for i in range(0, len(context), stride)]
+
+    # Inicijalizacija promenljive za najbolju sličnost
+    best_similarity = 0
+    best_segment = context_parts[0]
+
+    for segment in context_parts:
+        # Računanje sličnosti između pitanja i segmenta
+        similarity = calculate_similarity(question, segment)
+
+        # Ažuriranje najboljeg odgovora i sličnosti
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_segment = segment
+
+    best_answer = t5_model_generate_answer(question, best_segment, model, tokenizer)
+    st.write(best_answer)
 
 models = {
     'T5': t5_model_func,
